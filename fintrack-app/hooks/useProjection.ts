@@ -33,40 +33,37 @@ interface UseProjectionParams {
   years: number
 }
 
-// Fallback data when Edge Functions are not deployed yet
-function buildFallbackNetWorth(years: number, baseNetWorth = 175514): NetWorthPoint[] {
+// Fallback data when Edge Functions are not deployed yet — uses real DB values
+function buildFallbackNetWorth(years: number, baseNetWorth: number): NetWorthPoint[] {
   const points: NetWorthPoint[] = []
-  const annualGrowthRate = 0.12
+  const annualGrowthRate = 0.08
   for (let y = 0; y <= years; y++) {
     const nw = baseNetWorth * Math.pow(1 + annualGrowthRate, y)
     points.push({
       year: new Date().getFullYear() + y,
       net_worth: Math.round(nw),
-      assets: Math.round(nw * 1.15),
-      liabilities: Math.round(nw * 0.15),
+      assets: Math.round(nw * 1.12),
+      liabilities: Math.round(nw * 0.12),
     })
   }
   return points
 }
 
-function buildFallbackCashflow(): CashflowPoint[] {
+function buildFallbackCashflow(baseBalance: number, avgIncome: number, avgExpenses: number): CashflowPoint[] {
   const points: CashflowPoint[] = []
   const now = new Date()
   for (let m = 0; m < 12; m++) {
     const d = new Date(now.getFullYear(), now.getMonth() + m, 1)
-    const income = 15000 + Math.random() * 3000
-    const expenses = 9000 + Math.random() * 2000
     points.push({
       month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
       label: d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
-      income: Math.round(income),
-      expenses: Math.round(expenses),
-      net: Math.round(income - expenses),
+      income: Math.round(avgIncome),
+      expenses: Math.round(avgExpenses),
+      net: Math.round(avgIncome - avgExpenses),
       running_balance: 0,
     })
   }
-  // cumulative balance
-  let bal = 175514
+  let bal = baseBalance
   points.forEach((p) => { bal += p.net; p.running_balance = Math.round(bal) })
   return points
 }
@@ -82,50 +79,76 @@ export function useProjection({ entityId, years }: UseProjectionParams) {
     setLoading(true)
     const supabase = createClient()
 
-    // Goals query (always works)
-    const goalsPromise = supabase
-      .from('savings_goals')
-      .select('goal_id, name, balance, target_amount, target_date, icon')
-      .eq('entity_id', entityId)
-      .eq('status', 'active')
+    // Always fetch: goals + latest snapshot + last 3 months of transactions (for fallback averages)
+    const now = new Date()
+    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString().split('T')[0]
 
-    // Edge Functions (may not be deployed yet)
-    const nwPromise = supabase.functions.invoke('net-worth-projection', {
-      body: { entity_id: entityId, years },
-    })
-    const cfPromise = supabase.functions.invoke('cashflow-projection', {
-      body: { entity_id: entityId, months: 12 },
-    })
+    const [goalsRes, snapshotRes, txRes, nwRes, cfRes] = await Promise.allSettled([
+      supabase
+        .from('savings_goals')
+        .select('goal_id, name, balance, target_amount, target_date, icon')
+        .eq('entity_id', entityId)
+        .eq('status', 'active'),
 
-    const [goalsRes, nwRes, cfRes] = await Promise.allSettled([goalsPromise, nwPromise, cfPromise])
+      supabase
+        .from('net_worth_snapshots')
+        .select('net_worth')
+        .eq('entity_id', entityId)
+        .order('date', { ascending: false })
+        .limit(1)
+        .single(),
+
+      supabase
+        .from('transactions')
+        .select('amount, type')
+        .eq('entity_id', entityId)
+        .gte('due_date', threeMonthsAgo)
+        .not('type', 'in', '(transfer,savings_transfer)'),
+
+      supabase.functions.invoke('net-worth-projection', {
+        body: { entity_id: entityId, years },
+      }),
+
+      supabase.functions.invoke('cashflow-projection', {
+        body: { entity_id: entityId, months: 12 },
+      }),
+    ])
 
     // Goals
     if (goalsRes.status === 'fulfilled' && goalsRes.value.data) {
       setGoals(goalsRes.value.data as ProjectionGoal[])
     }
 
+    // Derive real base values for fallback
+    const baseNetWorth =
+      snapshotRes.status === 'fulfilled' && snapshotRes.value.data
+        ? Number(snapshotRes.value.data.net_worth)
+        : 0
+
+    let avgIncome = 7500
+    let avgExpenses = 4500
+    if (txRes.status === 'fulfilled' && txRes.value.data?.length) {
+      const txs = txRes.value.data
+      const totalIncome = txs.filter((t) => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
+      const totalExpenses = txs.filter((t) => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
+      if (totalIncome > 0) avgIncome = totalIncome / 3
+      if (totalExpenses > 0) avgExpenses = totalExpenses / 3
+    }
+
     // Net worth — fallback if Edge Function not deployed
-    if (
-      nwRes.status === 'fulfilled' &&
-      nwRes.value.data &&
-      !nwRes.value.error
-    ) {
+    if (nwRes.status === 'fulfilled' && nwRes.value.data && !nwRes.value.error) {
       setNetWorthData(nwRes.value.data as NetWorthPoint[])
       setUsingFallback(false)
     } else {
-      setNetWorthData(buildFallbackNetWorth(years))
+      setNetWorthData(buildFallbackNetWorth(years, baseNetWorth || 275514))
       setUsingFallback(true)
     }
 
     // Cashflow — fallback if Edge Function not deployed
-    if (
-      cfRes.status === 'fulfilled' &&
-      cfRes.value.data &&
-      !cfRes.value.error
-    ) {
+    if (cfRes.status === 'fulfilled' && cfRes.value.data && !cfRes.value.error) {
       setCashflowData(cfRes.value.data as CashflowPoint[])
     } else {
-      setCashflowData(buildFallbackCashflow())
+      setCashflowData(buildFallbackCashflow(baseNetWorth || 275514, avgIncome, avgExpenses))
     }
 
     setLoading(false)

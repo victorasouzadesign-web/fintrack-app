@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Building2, CreditCard } from 'lucide-react'
@@ -40,11 +41,12 @@ export function AccountSelector({
   onSelectAccount, onSelectCard,
   showCards = false,
 }: AccountSelectorProps) {
-  const [tab, setTab] = [
-    selectedCard ? 'cartao' : 'conta' as Tab,
-    (t: Tab) => { /* controlled via selections */ },
-  ]
-  const activeTab: Tab = selectedCard ? 'cartao' : 'conta'
+  const [activeTab, setActiveTab] = useState<Tab>(selectedCard ? 'cartao' : 'conta')
+
+  // Sync tab when sheet opens or selection changes from outside
+  useEffect(() => {
+    if (open) setActiveTab(selectedCard ? 'cartao' : 'conta')
+  }, [open, selectedCard])
 
   return (
     <BottomSheet open={open} onClose={onClose} title={label}>
@@ -54,10 +56,7 @@ export function AccountSelector({
             {(['conta', 'cartao'] as Tab[]).map((t) => (
               <button
                 key={t}
-                onClick={() => {
-                  if (t === 'conta') { onSelectCard(''); }
-                  else { onSelectAccount(''); }
-                }}
+                onClick={() => setActiveTab(t)}
                 className={cn(
                   'flex-1 rounded-md py-2 text-xs font-semibold transition-all duration-200 flex items-center justify-center gap-1.5',
                   activeTab === t
