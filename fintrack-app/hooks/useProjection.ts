@@ -79,11 +79,7 @@ export function useProjection({ entityId, years }: UseProjectionParams) {
     setLoading(true)
     const supabase = createClient()
 
-    // Always fetch: goals + latest snapshot + last 3 months of transactions (for fallback averages)
-    const now = new Date()
-    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString().split('T')[0]
-
-    const [goalsRes, snapshotRes, txRes, nwRes, cfRes] = await Promise.allSettled([
+    const [goalsRes, snapshotRes, recurrencesRes, installmentsRes, nwRes, cfRes] = await Promise.allSettled([
       supabase
         .from('savings_goals')
         .select('goal_id, name, balance, target_amount, target_date, icon')
@@ -99,11 +95,16 @@ export function useProjection({ entityId, years }: UseProjectionParams) {
         .single(),
 
       supabase
-        .from('transactions')
-        .select('amount, type')
+        .from('recurrences')
+        .select('amount, type, frequency')
         .eq('entity_id', entityId)
-        .gte('due_date', threeMonthsAgo)
-        .not('type', 'in', '(transfer,savings_transfer)'),
+        .eq('is_active', true),
+
+      supabase
+        .from('installments')
+        .select('installment_amount, remaining_installments')
+        .eq('entity_id', entityId)
+        .eq('status', 'active'),
 
       supabase.functions.invoke('net-worth-projection', {
         body: { entity_id: entityId, years },
@@ -119,20 +120,31 @@ export function useProjection({ entityId, years }: UseProjectionParams) {
       setGoals(goalsRes.value.data as ProjectionGoal[])
     }
 
-    // Derive real base values for fallback
     const baseNetWorth =
       snapshotRes.status === 'fulfilled' && snapshotRes.value.data
         ? Number(snapshotRes.value.data.net_worth)
         : 0
 
+    // Build monthly averages from real recurrences + installments
     let avgIncome = 7500
     let avgExpenses = 4500
-    if (txRes.status === 'fulfilled' && txRes.value.data?.length) {
-      const txs = txRes.value.data
-      const totalIncome = txs.filter((t) => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
-      const totalExpenses = txs.filter((t) => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
-      if (totalIncome > 0) avgIncome = totalIncome / 3
-      if (totalExpenses > 0) avgExpenses = totalExpenses / 3
+
+    if (recurrencesRes.status === 'fulfilled' && recurrencesRes.value.data?.length) {
+      const recs = recurrencesRes.value.data
+      const calcMonthly = (r: { amount: number; frequency: string }) => {
+        if (r.frequency === 'yearly') return r.amount / 12
+        if (r.frequency === 'weekly') return r.amount * 4.33
+        return r.amount
+      }
+      const incomeTotal = recs.filter(r => r.type === 'income').reduce((s, r) => s + calcMonthly(r), 0)
+      const expenseTotal = recs.filter(r => r.type === 'expense').reduce((s, r) => s + calcMonthly(r), 0)
+      if (incomeTotal > 0) avgIncome = incomeTotal
+      if (expenseTotal > 0) avgExpenses = expenseTotal
+    }
+
+    if (installmentsRes.status === 'fulfilled' && installmentsRes.value.data?.length) {
+      const activeInstallments = installmentsRes.value.data.filter(i => (i.remaining_installments ?? 0) > 0)
+      avgExpenses += activeInstallments.reduce((s, i) => s + Number(i.installment_amount), 0)
     }
 
     // Net worth — fallback if Edge Function not deployed

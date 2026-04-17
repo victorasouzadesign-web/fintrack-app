@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, ArrowLeftRight, Plus, TrendingUp, Settings } from 'lucide-react'
+import { Home, ArrowLeftRight, Plus, TrendingUp, Settings, Repeat } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
   { href: '/dashboard', icon: Home, label: 'Início' },
   { href: '/dashboard/transactions', icon: ArrowLeftRight, label: 'Transações' },
   { href: '/dashboard/quick-input', icon: Plus, label: '', isCenter: true },
+  { href: '/dashboard/recurrences', icon: Repeat, label: 'Fixos' },
   { href: '/dashboard/projection', icon: TrendingUp, label: 'Projeção' },
   { href: '/dashboard/settings', icon: Settings, label: 'Ajustes' },
 ]
