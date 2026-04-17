@@ -67,7 +67,7 @@ export function useTransactions({ entityId, year, month, filter, search }: UseTr
         .eq('entity_id', entityId)
         .gte('due_date', start)
         .lte('due_date', end)
-        .not('type', 'in', '(transfer,savings_transfer)')
+        .not('type', 'eq', 'transfer')
         .order('due_date', { ascending: false })
         .order('created_at', { ascending: false })
 
@@ -138,7 +138,8 @@ export function useTransactions({ entityId, year, month, filter, search }: UseTr
     (acc, t) => {
       if (t.status === 'paid') {
         if (t.type === 'income') acc.income += t.amount
-        else acc.expense += t.amount
+        else if (t.type === 'expense') acc.expense += t.amount
+        // savings_transfer não afeta receitas/despesas
       }
       return acc
     },

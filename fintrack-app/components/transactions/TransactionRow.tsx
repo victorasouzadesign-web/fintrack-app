@@ -24,8 +24,24 @@ function CategoryIcon({ icon, colorHex }: { icon: string | null; colorHex: strin
   )
 }
 
+function TransferIcon({ type }: { type: string }) {
+  if (type === 'savings_transfer') {
+    return (
+      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-none text-lg bg-[#F59E0B26]">
+        🎯
+      </div>
+    )
+  }
+  return (
+    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-none bg-[#14A08526]">
+      <span className="text-[#14A085] text-xl">⇄</span>
+    </div>
+  )
+}
+
 export function TransactionRow({ transaction: t, onDelete }: TransactionRowProps) {
   const isIncome = t.type === 'income'
+  const isTransfer = t.type === 'transfer' || t.type === 'savings_transfer'
   const [swiped, setSwiped] = useState(false)
   const startX = useRef(0)
 
@@ -73,7 +89,10 @@ export function TransactionRow({ transaction: t, onDelete }: TransactionRowProps
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <CategoryIcon icon={t.category_icon} colorHex={t.color_hex} />
+        {isTransfer
+          ? <TransferIcon type={t.type} />
+          : <CategoryIcon icon={t.category_icon} colorHex={t.color_hex} />
+        }
 
         {/* Info */}
         <div className="flex-1 min-w-0">
@@ -104,9 +123,9 @@ export function TransactionRow({ transaction: t, onDelete }: TransactionRowProps
         <div className="text-right flex-none">
           <p className={cn(
             'text-sm font-semibold tabular-nums',
-            isIncome ? 'text-[#22C55E]' : 'text-[#EF4444]'
+            isIncome ? 'text-[#22C55E]' : isTransfer ? 'text-[#F59E0B]' : 'text-[#EF4444]'
           )}>
-            {isIncome ? '+' : '-'} {formatCurrency(t.amount)}
+            {isIncome ? '+' : isTransfer ? '' : '-'} {formatCurrency(t.amount)}
           </p>
           <p className="text-xs text-[#475569] mt-0.5">
             {new Date(t.due_date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}

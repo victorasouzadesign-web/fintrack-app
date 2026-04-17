@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Calendar, CheckCircle, Clock, ChevronRight } from 'lucide-react'
+import { X, Calendar, CheckCircle, Clock, ChevronRight, Target, ArrowRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TypeSelector, TYPE_LABELS, type TransactionType } from '@/components/quick-input/TypeSelector'
 import { NumericKeypad, keypadReducer, parseAmount } from '@/components/quick-input/NumericKeypad'
@@ -20,9 +20,7 @@ function Toast({ message, type }: { message: string; type: 'success' | 'error' }
     <motion.div
       className={cn(
         'fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 rounded-xl text-sm font-medium shadow-lg flex items-center gap-2 max-w-[calc(100vw-32px)]',
-        type === 'success'
-          ? 'bg-[#22C55E] text-white'
-          : 'bg-[#EF4444] text-white'
+        type === 'success' ? 'bg-[#22C55E] text-white' : 'bg-[#EF4444] text-white'
       )}
       initial={{ opacity: 0, y: -16, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -36,8 +34,8 @@ function Toast({ message, type }: { message: string; type: 'success' | 'error' }
 }
 
 // ─── Field button ─────────────────────────────────────────────────────────────
-function FieldButton({ label, value, placeholder, onPress, accent = false }: {
-  label: string; value?: string; placeholder: string; onPress: () => void; accent?: boolean
+function FieldButton({ label, value, placeholder, onPress }: {
+  label: string; value?: string; placeholder: string; onPress: () => void
 }) {
   return (
     <div>
@@ -73,6 +71,8 @@ export default function QuickInputPage() {
   const [accountId, setAccountId] = useState<string | null>(null)
   const [cardId, setCardId] = useState<string | null>(null)
   const [toAccountId, setToAccountId] = useState<string | null>(null)
+  // Transfer destination: 'account' or 'goal'
+  const [transferTo, setTransferTo] = useState<'account' | 'goal'>('account')
   const [goalId, setGoalId] = useState<string | null>(null)
   const [status, setStatus] = useState<'paid' | 'planned'>('paid')
   const [isEstimated, setIsEstimated] = useState(false)
@@ -94,10 +94,8 @@ export default function QuickInputPage() {
   const [incomeCategories, setIncomeCategories] = useState<Category[]>([])
   const [goals, setGoals] = useState<Array<{ goal_id: string; name: string; balance: number | null; target_amount: number; icon: string | null }>>([])
 
-  // Load reference data on mount
   useEffect(() => {
     const supabase = createClient()
-
     Promise.all([
       supabase.from('accounts').select('account_id, name, type, current_balance').eq('entity_id', ENTITY_ID).order('name'),
       supabase.from('credit_cards').select('card_id, name, bank, limit_total').eq('entity_id', ENTITY_ID).eq('is_active', true),
@@ -111,10 +109,15 @@ export default function QuickInputPage() {
       if (incCatRes.data) setIncomeCategories(incCatRes.data as Category[])
       if (goalRes.data) setGoals(goalRes.data)
     })
-  }, [])
+  }, [ENTITY_ID])
 
-  // Reset category when switching type
-  useEffect(() => { setCategoryId(null) }, [type])
+  // Reset destination fields when type changes
+  useEffect(() => {
+    setCategoryId(null)
+    setToAccountId(null)
+    setGoalId(null)
+    setTransferTo('account')
+  }, [type])
 
   const amount = parseAmount(rawValue)
   const categories = type === 'income' ? incomeCategories : expenseCategories
@@ -124,7 +127,7 @@ export default function QuickInputPage() {
   const selectedAccountName = accounts.find(a => a.account_id === accountId)?.name
   const selectedCardName = cards.find(c => c.card_id === cardId)?.name
   const selectedToAccountName = accounts.find(a => a.account_id === toAccountId)?.name
-  const selectedGoalName = goals.find(g => g.goal_id === goalId)?.name
+  const selectedGoal = goals.find(g => g.goal_id === goalId)
 
   const canSave = amount > 0
 
@@ -141,6 +144,7 @@ export default function QuickInputPage() {
     setCardId(null)
     setToAccountId(null)
     setGoalId(null)
+    setTransferTo('account')
     setStatus('paid')
     setIsEstimated(false)
     setDate(new Date().toISOString().split('T')[0])
@@ -153,12 +157,18 @@ export default function QuickInputPage() {
     try {
       const supabase = createClient()
 
-      let dbType = type as string
-      if (type === 'savings') dbType = 'savings_transfer'
+      // Determine DB type
+      const isSavingsTransfer = type === 'transfer' && transferTo === 'goal' && goalId
+      const dbType = isSavingsTransfer ? 'savings_transfer' : type
+
+      // Build description for savings transfer if not provided
+      const goalName = selectedGoal?.name
+      const finalDescription = description.trim() ||
+        (isSavingsTransfer && goalName ? `Caixinha • ${goalName}` : null)
 
       const payload: Record<string, unknown> = {
         entity_id: ENTITY_ID,
-        description: description.trim() || null,
+        description: finalDescription,
         amount,
         type: dbType,
         due_date: date,
@@ -174,10 +184,27 @@ export default function QuickInputPage() {
       const { error } = await supabase.from('transactions').insert(payload)
       if (error) throw error
 
-      // Vibrate on success (mobile)
-      if (navigator.vibrate) navigator.vibrate(50)
+      // If saving to a goal: also record in savings_transfers and update goal balance
+      if (isSavingsTransfer && goalId) {
+        const goal = goals.find(g => g.goal_id === goalId)
+        await Promise.all([
+          supabase.from('savings_transfers').insert({
+            entity_id: ENTITY_ID,
+            to_goal_id: goalId,
+            from_account_id: accountId,
+            amount,
+            direction: 'account_to_goal',
+            date,
+            notes: description.trim() || null,
+          }),
+          goal
+            ? supabase.from('savings_goals').update({ balance: (goal.balance ?? 0) + amount }).eq('goal_id', goalId)
+            : Promise.resolve(),
+        ])
+      }
 
-      showToast('Transação salva!', 'success')
+      if (navigator.vibrate) navigator.vibrate(50)
+      showToast(isSavingsTransfer ? 'Valor enviado para a caixinha!' : 'Transação salva!', 'success')
       resetForm()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao salvar'
@@ -185,32 +212,26 @@ export default function QuickInputPage() {
     } finally {
       setSaving(false)
     }
-  }, [canSave, saving, type, description, amount, date, status, isEstimated, categoryId, accountId, cardId])
+  }, [canSave, saving, type, transferTo, description, amount, date, status, isEstimated, categoryId, accountId, cardId, goalId, selectedGoal, goals, ENTITY_ID])
 
-  const handleKey = (key: string) => {
-    setRawValue((prev) => keypadReducer(prev, key))
-  }
+  const handleKey = (key: string) => setRawValue((prev) => keypadReducer(prev, key))
 
-  const formattedAmount = amount === 0
-    ? 'R$ 0,00'
-    : formatCurrency(amount)
+  const formattedAmount = amount === 0 ? 'R$ 0,00' : formatCurrency(amount)
 
   const typeColor = {
     expense:  'text-[#EF4444]',
     income:   'text-[#22C55E]',
     transfer: 'text-[#14A085]',
-    savings:  'text-[#F59E0B]',
   }[type]
 
   return (
     <div className="fixed inset-0 bg-[#0A0F1E] flex flex-col">
 
-      {/* ── Toast ──────────────────────────────────────────── */}
       <AnimatePresence>
         {toast && <Toast message={toast.message} type={toast.type} />}
       </AnimatePresence>
 
-      {/* ── Header ─────────────────────────────────────────── */}
+      {/* Header */}
       <header className="flex items-center justify-between px-4 py-4 flex-none">
         <button
           onClick={() => router.back()}
@@ -225,11 +246,10 @@ export default function QuickInputPage() {
         <EntityToggle value={entityFilter} onChange={setEntityFilter} />
       </header>
 
-      {/* ── Scrollable body ────────────────────────────────── */}
+      {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-md mx-auto px-4 pb-4 space-y-4">
 
-          {/* Type selector */}
           <TypeSelector value={type} onChange={setType} />
 
           {/* Value display */}
@@ -253,16 +273,9 @@ export default function QuickInputPage() {
             )}
           </div>
 
-          {/* ── Conditional fields ──────────────────────────── */}
-
-          {/* Category (expense / income) */}
+          {/* ── Expense / Income fields ──────────────────── */}
           {(type === 'expense' || type === 'income') && (
-            <motion.div
-              key={`cat-${type}`}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-            >
+            <motion.div key={`cat-${type}`} className="space-y-3" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
               <FieldButton
                 label="Categoria"
                 value={selectedCategoryName ? `${selectedCategoryIcon ?? ''} ${selectedCategoryName}` : undefined}
@@ -272,7 +285,6 @@ export default function QuickInputPage() {
             </motion.div>
           )}
 
-          {/* Account / Card (expense) */}
           {type === 'expense' && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: 0.05 }}>
               <FieldButton
@@ -284,7 +296,6 @@ export default function QuickInputPage() {
             </motion.div>
           )}
 
-          {/* Account (income) */}
           {type === 'income' && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: 0.05 }}>
               <FieldButton
@@ -296,7 +307,6 @@ export default function QuickInputPage() {
             </motion.div>
           )}
 
-          {/* Income: estimated toggle */}
           {type === 'income' && (
             <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: 0.1 }}>
               <p className="text-xs font-medium text-[#475569] mb-1.5">Tipo de receita</p>
@@ -319,39 +329,59 @@ export default function QuickInputPage() {
             </motion.div>
           )}
 
-          {/* Transfer: from + to accounts */}
+          {/* ── Transfer fields ──────────────────────────── */}
           {type === 'transfer' && (
             <motion.div className="space-y-3" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-              <FieldButton
-                label="Da conta"
-                value={selectedAccountName}
-                placeholder="Conta de origem"
-                onPress={() => setShowAccountSheet(true)}
-              />
-              <FieldButton
-                label="Para conta"
-                value={selectedToAccountName}
-                placeholder="Conta de destino"
-                onPress={() => setShowToAccountSheet(true)}
-              />
-            </motion.div>
-          )}
 
-          {/* Savings: from account + goal */}
-          {type === 'savings' && (
-            <motion.div className="space-y-3" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+              {/* Da conta */}
               <FieldButton
                 label="Da conta"
                 value={selectedAccountName}
                 placeholder="Conta de origem"
                 onPress={() => setShowAccountSheet(true)}
               />
-              <FieldButton
-                label="Para meta"
-                value={selectedGoalName}
-                placeholder="Selecionar meta"
-                onPress={() => setShowGoalSheet(true)}
-              />
+
+              {/* Para: toggle Conta / Caixinha */}
+              <div>
+                <p className="text-xs font-medium text-[#475569] mb-1.5">Para</p>
+                <div className="flex gap-2 mb-2">
+                  {(['account', 'goal'] as const).map((dest) => (
+                    <button
+                      key={dest}
+                      onClick={() => { setTransferTo(dest); setToAccountId(null); setGoalId(null) }}
+                      className={cn(
+                        'flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200',
+                        transferTo === dest
+                          ? 'bg-[#14A085]/10 border-[#14A085]/30 text-[#14A085]'
+                          : 'bg-[#111827] border-[#1E293B] text-[#94A3B8]'
+                      )}
+                    >
+                      {dest === 'account'
+                        ? <><ArrowRight size={14} /> Conta</>
+                        : <><Target size={14} /> Caixinha</>
+                      }
+                    </button>
+                  ))}
+                </div>
+
+                {transferTo === 'account' && (
+                  <FieldButton
+                    label=""
+                    value={selectedToAccountName}
+                    placeholder="Conta de destino"
+                    onPress={() => setShowToAccountSheet(true)}
+                  />
+                )}
+
+                {transferTo === 'goal' && (
+                  <FieldButton
+                    label=""
+                    value={selectedGoal ? `${selectedGoal.icon ?? '🎯'} ${selectedGoal.name}` : undefined}
+                    placeholder="Selecionar caixinha"
+                    onPress={() => setShowGoalSheet(true)}
+                  />
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -406,18 +436,12 @@ export default function QuickInputPage() {
         </div>
       </div>
 
-      {/* ── Keypad (fixed at bottom) ────────────────────────── */}
+      {/* Keypad */}
       <div className="flex-none max-w-md mx-auto w-full">
-        <NumericKeypad
-          onKey={handleKey}
-          onSave={handleSave}
-          canSave={canSave}
-          saving={saving}
-        />
+        <NumericKeypad onKey={handleKey} onSave={handleSave} canSave={canSave} saving={saving} />
       </div>
 
-      {/* ── Bottom Sheets ───────────────────────────────────── */}
-
+      {/* Bottom Sheets */}
       <CategoryBottomSheet
         open={showCategorySheet}
         onClose={() => setShowCategorySheet(false)}
@@ -426,6 +450,7 @@ export default function QuickInputPage() {
         onSelect={setCategoryId}
       />
 
+      {/* Source account (expense/income/transfer-from) */}
       <AccountSelector
         open={showAccountSheet}
         onClose={() => setShowAccountSheet(false)}
@@ -439,6 +464,7 @@ export default function QuickInputPage() {
         showCards={type === 'expense'}
       />
 
+      {/* Destination account (transfer to account) */}
       <AccountSelector
         open={showToAccountSheet}
         onClose={() => setShowToAccountSheet(false)}
@@ -452,8 +478,8 @@ export default function QuickInputPage() {
         showCards={false}
       />
 
-      {/* Goal picker bottom sheet */}
-      <BottomSheet open={showGoalSheet} onClose={() => setShowGoalSheet(false)} title="Meta de poupança">
+      {/* Goal picker (transfer to caixinha) */}
+      <BottomSheet open={showGoalSheet} onClose={() => setShowGoalSheet(false)} title="Selecionar caixinha">
         <div className="px-4 pt-2 pb-4 space-y-2 max-h-[50vh] overflow-y-auto">
           {goals.map((g) => {
             const progress = g.target_amount > 0 ? Math.min(100, ((g.balance ?? 0) / g.target_amount) * 100) : 0
@@ -478,22 +504,25 @@ export default function QuickInputPage() {
                     <span className="text-[10px] text-[#94A3B8] tabular-nums">{Math.round(progress)}%</span>
                   </div>
                 </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs font-semibold text-[#14A085] tabular-nums">{formatCurrency(g.balance ?? 0)}</p>
+                  <p className="text-[10px] text-[#475569] tabular-nums">de {formatCurrency(g.target_amount)}</p>
+                </div>
               </button>
             )
           })}
           {goals.length === 0 && (
-            <p className="text-sm text-[#475569] text-center py-6">Nenhuma meta ativa</p>
+            <p className="text-sm text-[#475569] text-center py-6">Nenhuma caixinha ativa</p>
           )}
         </div>
       </BottomSheet>
 
-      {/* Date picker bottom sheet */}
+      {/* Date picker */}
       <BottomSheet open={showDateSheet} onClose={() => setShowDateSheet(false)} title="Data">
         <div className="px-4 pt-3 pb-6">
           <input
             type="date"
             value={date}
-            max={new Date().toISOString().split('T')[0]}
             onChange={(e) => { setDate(e.target.value); setShowDateSheet(false) }}
             className="w-full bg-[#0A0F1E] border border-[#1E293B] focus:border-[#14A085] rounded-xl px-4 py-3 text-sm text-[#F8FAFC] outline-none transition-colors duration-200"
           />
