@@ -80,11 +80,11 @@ export function AddGoalSheet({ open, onClose, entityId, onAdd }: AddGoalSheetPro
             {ICONS.map(({ key, label }) => (
               <button
                 key={key}
-                onClick={() => setIcon(icon === key ? null : key)}
+                onClick={() => setIcon(icon === label ? null : label)}
                 className="aspect-square flex items-center justify-center text-xl rounded-xl border transition-all duration-200"
                 style={{
-                  borderColor: icon === key ? '#14A085' : '#1E293B',
-                  backgroundColor: icon === key ? '#14A085/10' : '#1C2537',
+                  borderColor: icon === label ? '#14A085' : '#1E293B',
+                  backgroundColor: icon === label ? 'rgba(20,160,133,0.1)' : '#1C2537',
                 }}
               >
                 {label}

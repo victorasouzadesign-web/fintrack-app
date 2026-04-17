@@ -92,7 +92,7 @@ export function useScenarios(entityId: string) {
   }) => {
     const supabase = createClient()
     const { error } = await supabase.from('scenarios').insert({
-      entity_id: entityId, ...payload, status: 'draft',
+      entity_id: entityId, ...payload, status: 'active',
     })
     if (!error) await fetchScenarios()
     return error
