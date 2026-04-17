@@ -9,7 +9,7 @@ import {
   Area, AreaChart, Tooltip,
   ResponsiveContainer, ReferenceDot,
 } from 'recharts'
-import { AlertCircle, X, ChevronRight, TrendingUp, TrendingDown, ShoppingCart, Target, BarChart2, SlidersHorizontal } from 'lucide-react'
+import { AlertCircle, X, ChevronRight, TrendingUp, TrendingDown, ShoppingCart, Target, BarChart2, SlidersHorizontal, Layers } from 'lucide-react'
 import { EntityToggle } from '@/components/layout/EntityToggle'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { useHomeData } from '@/hooks/useHomeData'
@@ -346,16 +346,14 @@ export function HomeClient() {
             </Link>
             <Link
               href="/dashboard/scenarios"
-              className="flex items-center gap-3 bg-[#111827] border border-[#1E293B] rounded-xl px-4 py-3.5 hover:border-[#1E293B] active:scale-95 transition-all duration-200 opacity-50"
-              aria-disabled="true"
-              onClick={e => e.preventDefault()}
+              className="flex items-center gap-3 bg-[#111827] border border-[#1E293B] rounded-xl px-4 py-3.5 hover:border-[#14A085]/40 active:scale-95 transition-all duration-200"
             >
-              <div className="w-9 h-9 rounded-xl bg-[#475569]/15 flex items-center justify-center shrink-0">
-                <SlidersHorizontal size={18} className="text-[#475569]" />
+              <div className="w-9 h-9 rounded-xl bg-[#6366F1]/15 flex items-center justify-center shrink-0">
+                <Layers size={18} className="text-[#6366F1]" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-[#F8FAFC] leading-tight">Cenários</p>
-                <p className="text-[11px] text-[#475569] mt-0.5">Em breve</p>
+                <p className="text-[11px] text-[#475569] mt-0.5">Simulações financeiras</p>
               </div>
             </Link>
           </div>

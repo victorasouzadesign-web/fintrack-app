@@ -116,11 +116,11 @@ Types em `lib/database.types.ts` (gerados via `supabase gen types typescript --p
 | 1 | **Home (Mapa)** | `/dashboard` | ✅ Criada |
 | 2 | **Transações** | `/dashboard/transactions` | ✅ Criada |
 | 3 | **Quick Input** | `/dashboard/quick-input` | ✅ Criada |
-| 4 | **Projeção** | `/dashboard/projection` | ⏳ Próxima |
-| 5 | **Metas** | `/dashboard/goals` | ⏳ |
-| 6 | **Devo Comprar?** | `/dashboard/purchase` | ⏳ |
-| 7 | **Cenários** | `/dashboard/scenarios` | ⏳ |
-| 8 | **Ajustes** | `/dashboard/settings` | ⏳ |
+| 4 | **Projeção** | `/dashboard/projection` | ✅ Criada |
+| 5 | **Metas** | `/dashboard/goals` | ✅ Criada |
+| 6 | **Devo Comprar?** | `/dashboard/purchase` | ✅ Criada |
+| 7 | **Cenários** | `/dashboard/scenarios` | ✅ Criada |
+| 8 | **Ajustes** | `/dashboard/settings` | ✅ Criada |
 
 ---
 
