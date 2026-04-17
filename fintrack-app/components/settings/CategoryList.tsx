@@ -42,9 +42,12 @@ function ParentGroup({ parent, onEdit, onAdd }: ParentGroupProps) {
   return (
     <div>
       {/* Parent row */}
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center gap-3 px-1 py-2 group"
+        onKeyDown={e => e.key === 'Enter' && setOpen(v => !v)}
+        className="w-full flex items-center gap-3 px-1 py-2 group cursor-pointer"
       >
         <div
           className="w-1 h-5 rounded-full shrink-0"
@@ -69,7 +72,7 @@ function ParentGroup({ parent, onEdit, onAdd }: ParentGroupProps) {
         >
           <Pencil size={12} />
         </button>
-      </button>
+      </div>
 
       {/* Children */}
       <AnimatePresence>
