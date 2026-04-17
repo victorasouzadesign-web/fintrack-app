@@ -1,19 +1,18 @@
-Faça um commit de todas as mudanças pendentes e depois push para o GitHub.
+Faça commit de todas as mudanças pendentes e push para o GitHub sem fazer perguntas.
 
-Siga estes passos em ordem:
+Siga estes passos diretamente, sem confirmação:
 
-1. Execute `git status` para ver arquivos modificados e não rastreados.
-2. Execute `git diff --stat` para ver o resumo das mudanças.
-3. Execute `git log --oneline -3` para ver o estilo dos commits recentes e manter consistência.
-4. Analise as mudanças e escreva uma mensagem de commit clara e concisa:
-   - Use prefixo semântico: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
-   - Primeira linha: máximo 72 caracteres, descreve O QUÊ foi feito
-   - Foque no "porquê" quando relevante
-   - Nunca commitar arquivos com secrets (.env, credenciais)
-5. Execute `git add` nos arquivos relevantes (evite `git add .` se houver arquivos sensíveis).
-6. Crie o commit com a mensagem usando HEREDOC para formatação correta.
-7. Execute `git push origin main` para enviar ao GitHub.
-8. Confirme o sucesso mostrando o hash do commit e a URL do repositório.
+1. `git status` para ver arquivos modificados.
+2. `git diff --stat` para resumo das mudanças.
+3. `git log --oneline -3` para consistência de estilo.
+4. Analise as mudanças e escreva mensagem de commit semântica (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`).
+5. `git add` nos arquivos relevantes (nunca commitar .env ou credenciais).
+6. Crie o commit com HEREDOC.
+7. `git push origin main` imediatamente.
+8. Mostre apenas o hash do commit e confirmação de push.
 
-Sempre inclua no final da mensagem de commit:
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Regras:
+- Não pergunte nada — execute tudo automaticamente
+- Não peça confirmação antes do push
+- Sempre inclua no final da mensagem:
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
