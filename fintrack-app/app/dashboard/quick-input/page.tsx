@@ -184,9 +184,10 @@ export default function QuickInputPage() {
       const { error } = await supabase.from('transactions').insert(payload)
       if (error) throw error
 
-      // If saving to a goal: also record in savings_transfers and update goal balance
+      // If saving to a goal: record transfer, update goal balance AND deduct from account
       if (isSavingsTransfer && goalId) {
         const goal = goals.find(g => g.goal_id === goalId)
+        const sourceAccount = accounts.find(a => a.account_id === accountId)
         await Promise.all([
           supabase.from('savings_transfers').insert({
             entity_id: ENTITY_ID,
@@ -198,7 +199,14 @@ export default function QuickInputPage() {
             notes: description.trim() || null,
           }),
           goal
-            ? supabase.from('savings_goals').update({ balance: (goal.balance ?? 0) + amount }).eq('goal_id', goalId)
+            ? supabase.from('savings_goals')
+                .update({ balance: (goal.balance ?? 0) + amount })
+                .eq('goal_id', goalId)
+            : Promise.resolve(),
+          sourceAccount && accountId
+            ? supabase.from('accounts')
+                .update({ current_balance: (sourceAccount.current_balance ?? 0) - amount })
+                .eq('account_id', accountId)
             : Promise.resolve(),
         ])
       }
